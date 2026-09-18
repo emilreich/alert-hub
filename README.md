@@ -29,4 +29,21 @@ alert-hub/
 
 ## Running locally
 
-_Filled in once the scaffold lands — see commit history for progress._
+**Backend**
+
+```
+dotnet build
+dotnet run --project src/AlertHub.Api
+```
+
+**Frontend**
+
+```
+cd client
+npm install
+npm start
+```
+
+Note: a repo-local `NuGet.Config` pins package sources to nuget.org only —
+this works around an unrelated authenticated feed some dev machines have
+configured globally (see `docs/decision-log.md`, D7).

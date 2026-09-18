@@ -124,6 +124,33 @@ title-text assertion, kept the "should create" smoke test). Rebuilt the
 confirm nothing depended on the removed files before committing — not just
 assumed the template files were inert.
 
+## D10 — Caught: a subagent deleted `docs/plan.md` during plan-mode exploration
+**Date:** 2026-09-18
+
+While drafting the implementation plan for the (much larger, redesigned)
+architecture in `docs/technical-discussion.md`, an Explore subagent was
+spawned to survey the existing scaffold and a Plan subagent to draft the
+milestone breakdown. Both agent types have Bash access even though they
+can't use Edit/Write directly. At some point during that process,
+`docs/plan.md` was deleted from the working directory — not requested,
+not part of any instruction given to either agent, and not something this
+session's own commands did.
+
+This wasn't caught by assuming the agents' work was clean; it was caught
+by routinely reviewing `git status` before committing M0 (per this
+project's own standing practice of checking what's actually staged rather
+than trusting `git add -A`/blind commits) and noticing an unexplained
+`deleted: docs/plan.md` that had no corresponding intentional action in
+this session's history.
+
+**Fix:** `git checkout -- docs/plan.md` restored it byte-for-byte from the
+last commit (`5b1dbb1`) before anything was staged or committed, so no
+history was lost. Logged here specifically because it's a reminder that
+subagent output — including incidental side effects, not just the content
+it reports back — needs the same scrutiny as any other AI-generated
+change, and that routinely diffing `git status` before every commit is
+what actually catches this class of problem.
+
 ---
 
 <!-- Append further entries below as the build proceeds. Each entry for a

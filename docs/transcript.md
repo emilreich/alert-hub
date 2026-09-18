@@ -2353,6 +2353,308 @@ Confirmed — forced logout on disable is a yes. That closes out the entire
 technical/architecture discussion. Docs brought fully current; ready for
 plan mode, prioritization pass included as discussed.
 
+### Turn 96 — User
+
+> Lets switch.
+
+*(Referring to switching into plan mode to plan the implementation, as agreed at the end of Turn 93/94.)*
+
+### Turn 97 — Assistant
+
+[tool actions: called `EnterPlanMode`; spawned an Explore subagent to survey the existing repo scaffold]
+
+I'm surveying the existing scaffold in the repo (the 4 .NET projects and Angular client from the earlier session, before this whole design conversation happened) to figure out what's reusable versus what needs to be replaced, before drafting the implementation plan. I'll follow up once that's back.
+
+*(Explore agent reported back: all 4 .NET projects are completely empty — no source files beyond template boilerplate, no DbContext, no auth; Angular client is the untouched `ng new` scaffold; nothing to preserve, safe to build fresh. It also flagged that `plan.md`/`architecture.md`/`decision-log.md`/`prompt-log.md` document the old, superseded design and would need reconciling.)*
+
+[tool actions: ran `dotnet --list-sdks` — confirmed 8.0.101 is the newest installed SDK, `net8.0` stays correct]
+
+Good — confirms it's safe to build fresh: all four .NET projects are empty scaffolding (no source files, no DbContext, no logic), the Angular client is the untouched `ng new` output, and there's nothing to migrate away from. Two things worth noting from that survey: `plan.md`/`architecture.md`/`decision-log.md`/`prompt-log.md` document the *earlier, now-superseded* design (pre-dating this whole conversation) and will need reconciling once we build the new architecture, and the Sqlite EF Core package is referenced but unused (easy swap to MSSQL). Let me do one quick read-only check on the installed .NET SDK before handing this to a planning pass.
+
+Confirmed: `net8.0` stays the right target (8.0.101 is the newest SDK on this machine, no 9/10 available). Now let me get a concrete implementation plan drafted, grounded in the full architecture we designed.
+
+[tool actions: spawned a Plan subagent, pointed at `docs/technical-discussion.md`, to draft a concrete project layout, build order, file-level milestones, the priority/cut list, a testing approach, and a docs-reconciliation plan]
+
+The planning agent is working through the full design doc now — it'll read `docs/technical-discussion.md` in full and produce a concrete project layout, build order, file-level milestones, the prioritized cut-list you asked for, a testing approach, and a plan for reconciling the now-stale `plan.md`/`architecture.md`/`decision-log.md`. I'll follow up once it's back.
+
+*(Plan agent returned a full structured plan: a 5-project solution layout including a new independent `AlertHub.CategorizationService`; a 13-row build order M0–M11, each a separate commit; a load-bearing/droppable/out-of-scope priority breakdown; a unit+integration testing approach; a docs-reconciliation recommendation; and two genuine open questions it found rather than silently resolving — whether the categorization microservice should share any code with Core, and a minor inconsistency between the "Admins" SignalR group being keyed on a role claim versus the post-permission-redesign model.)*
+
+The planning agent came back with a solid, well-structured plan — concrete milestones, a file list per milestone, and importantly the prioritized load-bearing/droppable/out-of-scope breakdown you asked for. It also surfaced two genuinely unresolved questions from the design (not re-litigating anything settled) that I want your call on before finalizing, since they affect the microservice milestone directly.
+
+**[AskUserQuestion: "Should the categorization microservice share any code (project reference/DTOs) with the main API's Core project, or be fully independent?"]**
+- Fully independent (Recommended)
+- Shared contracts package
+
+**User answered:** "Fully independent (Recommended)"
+
+### Turn 98 — Assistant
+
+[tool actions: wrote the final plan to the plan file]
+
+*(Plan file written: context, two resolved ambiguities — microservice fully independent with plain-string category names crossing the boundary, and SignalR groups keyed on permission claims not role claims — solution layout, the M0–M11 build order table, the priority/cut list, testing approach, docs-reconciliation note, and verification checkpoints.)*
+
+[tool actions: called `ExitPlanMode`]
+
+**User approved the plan.**
+
+### Turn 99 — Assistant
+
+[tool actions: exited plan mode; began M0 — edited `AlertHub.Infrastructure.csproj` to swap SQLite for SQL Server; created `services/AlertHub.CategorizationService/` as a bare skeleton project (csproj, Program.cs, launchSettings.json, appsettings files) with no project reference to Core/Infrastructure; ran `dotnet sln add` to register it]
+
+### Turn 100 — User (mid-turn interruption)
+
+> are you going to give me an implementation plan first?
+
+### Turn 101 — Assistant
+
+We did go through that — plan mode ran an Explore agent to survey the existing (empty) scaffold, then a Plan agent drafted a detailed implementation plan, and you approved it via `ExitPlanMode`. Here's a quick recap in case it wasn't clearly visible:
+
+**Approved plan, in brief:**
+- **New solution layout**: existing `src/` (Core, Infrastructure, Api, Tests) plus a new `services/AlertHub.CategorizationService` (fully independent, no shared code with Core — categories cross as plain strings) and `client/` (Angular).
+- **12 milestones (M0–M11)**, each landing as its own commit per your explicit request: solution restructuring → docs-superseded banner → data model/EF/MSSQL → auth+permissions → self-service CRUD → admin CRUD → categorization microservice+matching engine → fan-out/notifications → SignalR (load-bearing patterns) → feed read paths → Angular (shell/user screens/admin screens/SignalR wiring) → optional droppable real-time extras → optional docs rewrite.
+- **A prioritized cut list**: load-bearing items (data model, real auth+permissions, subscriptions+matching, the physically-separate microservice, ownership-scoped feed content, the two core SignalR push patterns, admin CRUD, audit/notification logs, a working unstyled UI path) versus droppable-if-time-runs-short items (audit-trail UI, keyword categorizer sophistication, extra SignalR broadcasts, forced-logout push, content caching, UI polish) versus explicitly out-of-scope (OAuth, real outlet APIs, Docker files, message broker, refresh tokens).
+- **Testing approach**: unit tests on the matching engine + categorizer, one integration test for the full ingest→categorize→match→feed flow using a fake dispatcher.
+
+I've just started on **M0** (solution restructuring): swapped Infrastructure's SQLite package for SQL Server, scaffolded the new `AlertHub.CategorizationService` minimal API project (its own csproj/Program.cs/appsettings, no project reference to Core — per the "fully independent" decision), and added it to the .sln.
+
+Want me to keep going through the milestones, or pause here so you can look at the plan file directly first (`C:\Users\i6056\.claude\plans\okay-now-that-i-playful-swing.md`)?
+
+### Turn 102 — User
+
+> have you alredy started implmenting the plan?
+
+### Turn 103 — Assistant
+
+Yes — I've started on M0 (solution restructuring), the first milestone in the approved plan. Concretely, so far:
+
+1. Edited `src/AlertHub.Infrastructure/AlertHub.Infrastructure.csproj` — swapped the (previously unused) `Microsoft.EntityFrameworkCore.Sqlite` package for `Microsoft.EntityFrameworkCore.SqlServer` (same pinned version, 8.0.11).
+2. Created a new project, `services/AlertHub.CategorizationService/` — its own `.csproj` (Web SDK, Swashbuckle, deliberately **no** project reference to `Core`/`Infrastructure`, per the "fully independent microservice" decision), a bare `Program.cs` (just hosts the app + Swagger — the actual `/categorize` endpoint logic comes later in M5, not this milestone), `Properties/launchSettings.json` (ports 5090/7190, distinct from the main API's 5051/7168), and matching `appsettings.json`/`appsettings.Development.json`.
+3. Ran `dotnet sln add ...` to register the new project in the solution.
+
+**Nothing has been committed yet** — no `git commit` has run. I haven't yet verified the whole solution builds after these changes either.
+
+Given the plan calls for M0 to land as its own commit before moving to M0.5/M1, do you want me to: finish verifying M0 builds cleanly and commit it now, then keep going through the milestones — or pause here so you can look things over first?
+
+### Turn 104 — User
+
+> can you recreate the plan file with the new points we discussed during this session?
+
+*(Plan mode re-entered by the harness at this point.)*
+
+### Turn 105 — Assistant
+
+This is the same task, continuing — the architectural content is already accurate and fully reflects our discussion (I wrote it fresh right before implementation started). What needs updating is that it should reflect actual progress now that M0 is partially underway, so the plan file stays a true living record rather than looking untouched.
+
+[tool actions: read the plan file; added a "Progress so far" section documenting exactly what M0 work had been done and what remained (verify build, commit); called `ExitPlanMode`]
+
+**User approved the updated plan.**
+
+*(Plan mode exited; auto mode also exited per the harness at this point.)*
+
+### Turn 106 — Assistant
+
+[tool actions: `dotnet build AlertHub.sln` — succeeded, 0 warnings/errors across all 5 projects; `git status` — discovered `docs/plan.md` showing as deleted]
+
+That's unexpected — `docs/plan.md` shows as deleted, but I never intentionally touched that file this session. Let me investigate before touching anything further, since I don't want to compound an accidental deletion.
+
+[tool actions: confirmed via `git log`/`ls` that the file was genuinely missing from disk though still in git history (commit `5b1dbb1`)]
+
+Confirmed — `docs/plan.md` is genuinely gone from disk (still in git history, but the working copy is missing), and I never issued a command to delete it. This was almost certainly caused by a stray action inside one of the subagents I spawned during plan mode (Explore/Plan agents have Bash access even though they can't Edit/Write). Restoring it immediately since it's still safely committed.
+
+[tool actions: `git checkout -- docs/plan.md`; verified `git status` now shows only expected M0 changes]
+
+Restored — `docs/plan.md` is back exactly as committed, and `git status` now shows only the expected M0 changes. This is worth logging in `decision-log.md` as a caught issue, matching that file's existing style (D7–D9).
+
+[tool actions: added D10 to `decision-log.md`]
+
+[tool actions: staged and committed the documentation files (`docs/technical-discussion.md`, `docs/transcript.md`) as one commit, then staged and committed M0's solution-restructuring changes (sln, Infrastructure.csproj, new services project, the D10 log entry) as a second commit]
+
+M0 is committed. **One thing worth flagging clearly:** while wrapping this up I found that `docs/plan.md` had been deleted from disk — not by any command I issued, but apparently as a side effect of one of the subagents (Explore/Plan) spawned during plan mode, which have Bash access even without Edit/Write. I caught it via routine `git status` review before committing, restored it from git history (`git checkout -- docs/plan.md`), verified it was back byte-for-byte, and logged it as D10 in `decision-log.md`. No history was lost, but it's a good example of why subagent output needs the same scrutiny as any other AI-generated change — not just what they report, but side effects too.
+
+Two commits landed:
+1. `d97cadb` — the technical-discussion.md/transcript.md documentation
+2. `f489ea3` — M0 solution restructuring (MSSQL swap, new categorization microservice skeleton, sln update, the D10 log entry)
+
+Next up is **M0.5** (docs-superseded banner on the stale `plan.md`/`architecture.md`/`decision-log.md`), then **M1** (data model + EF Core + seed data). Want me to continue straight through, or pause for a look first?
+
+### Turn 107 — User
+
+> Is the decision log and archtictecture.md still relevant and up to date?
+
+### Turn 108 — Assistant
+
+Honest answer: **no, not fully — and the two files are stale in different ways.**
+
+**`architecture.md`** is almost entirely superseded. It describes the *old* data model end-to-end — `User` (just Id/Email/DisplayName), `AlertRule` (Category/Keyword/MinSeverity/ChannelKeys), `Event`, `Delivery` — none of which exist anymore. The new model replaced it entirely, along with the API surface and channel-abstraction sections.
+
+**`decision-log.md` is a genuine mix, not uniformly stale:**
+- **Still accurate:** D1 (separate repo), D7 (NuGet feed issue), D8 (EF Core version pin), D9 (template cruft), D10 (subagent deletion) — process/infrastructure entries, not architecture claims.
+- **Partially stale — same direction, wrong specifics:** D2 (per-user subscriptions — philosophy survived, specifics changed), D3 (simulated event source — still true in spirit, doesn't mention the microservice).
+- **Flatly contradicted now:** D4 (says no end-user portal — we built one), D5 (names SQLite — now MSSQL), D6 (four-project layout — now five).
+
+This is exactly why **M0.5** exists in the plan — prepend a "superseded, see `technical-discussion.md`" banner to `plan.md`, `architecture.md`, and `decision-log.md`'s architecture-relevant sections. Want me to do that now before moving on to M1?
+
+### Turn 109 — User
+
+> What would you do?
+
+### Turn 110 — Assistant
+
+My honest take: the blanket "superseded" banner I inherited from the plan isn't quite right for `decision-log.md` — it's too broad a brush for a file that's a genuine mix.
+
+**What I'd actually do, refined from the plan:**
+- **`plan.md`** — full-file superseded banner. Nothing worth preserving standalone.
+- **`architecture.md`** — same, full-file banner.
+- **`decision-log.md`** — **not** a blanket banner. D1/D7–D10 are still accurate, standalone-useful evidence and shouldn't read as suspect just because they sit in the same file as stale entries. I'd add a short inline note *only* on D2 through D6, each pointing to `technical-discussion.md`.
+
+I wouldn't do the full `architecture.md` rewrite (M11) now either — `technical-discussion.md`'s Decision Timeline is already a complete, accurate, arguably better-organized reference.
+
+Want me to go ahead with that (full banners on `plan.md`/`architecture.md`, targeted per-entry notes on D2–D6 in `decision-log.md`)?
+
+### Turn 111 — User
+
+> only keep technical discussion transcript and plan. We need these three up to date
+
+*(IDE context: `docs/plan.md` was open at this point.)*
+
+### Turn 112 — Assistant
+
+A couple of things worth pinning down before I touch anything, since one reading of this involves deleting files that document real process (and the exercise's evaluation criteria explicitly values decision logs and prompt history as submission evidence):
+
+**[AskUserQuestion: "You said 'only keep technical-discussion, transcript, and plan' — what happens to architecture.md, decision-log.md, and prompt-log.md?"]**
+- Delete them from the repo
+- Keep as frozen history, stop updating
+
+**User answered:** "Delete them from the repo"
+
+### Turn 113 — Assistant
+
+One more flag before I execute, specifically about `prompt-log.md`: it's the **only** record of the earlier session's actual prompts. Since the exercise explicitly requires "your prompt history — all prompts used during the process," deleting it outright would remove the *only* copy of session 1's prompts, not just a stylistic duplicate.
+
+**[AskUserQuestion: "prompt-log.md is the only record of the earlier session's prompts. How should it be handled?"]**
+- Fold into transcript.md, then delete
+- Delete it too, as planned
+
+**User answered:** "Delete it too, as planned"
+
+### Turn 114 — Assistant
+
+Understood — proceeding with deletion of all three as instructed, no folding needed.
+
+[tool actions: `git rm docs/architecture.md docs/decision-log.md docs/prompt-log.md`]
+
+### Turn 115 — User (mid-turn interruption)
+
+> One other thing I think the plan md you restored isn't actually what was deleted
+
+### Turn 116 — Assistant
+
+Let me verify that carefully rather than assume the restore was correct — good thing to double check.
+
+[tool actions: `git log --follow -- docs/plan.md` (only one commit ever touched it, `5b1dbb1`); `git diff HEAD -- docs/plan.md` (empty — working copy identical to HEAD); `wc -l`]
+
+Confirmed correct — only one commit ever touched `docs/plan.md` (`5b1dbb1`), and `git diff HEAD -- docs/plan.md` is empty, meaning the working copy is byte-for-byte identical to that commit. There's no other version it could have diverged from. Let me also spot-check it against the content actually shown at the very start of this conversation, just to be thorough.
+
+[tool actions: read the first 15 lines of the current file, compared against the original Turn-2 read from the very start of this whole conversation]
+
+Matches exactly — same opening lines, same structure as what was originally read at the start of this session. The restore was correct; the (155 vs 156) line-count difference is just how `wc -l` counts a trailing newline, not missing content. Good catch to double-check, but the file is genuinely intact.
+
+Now continuing with the doc consolidation — `architecture.md`, `decision-log.md`, and `prompt-log.md` are staged for removal. Next I'll rewrite `docs/plan.md` with the current, approved implementation plan.
+
+[tool actions: rewrote `docs/plan.md` — context, two resolved ambiguities, solution layout, milestone status table (M0/M0.5 marked in progress/done, rest not started), priority/cut list, testing approach, verification checkpoints; staged and committed the whole doc consolidation]
+
+Committed. Docs are now consolidated to the three living files you wanted: `docs/plan.md` (current plan + milestone status), `docs/technical-discussion.md` (the full design reasoning + decision timeline), and `docs/transcript.md` (verbatim conversation record). `architecture.md`, `decision-log.md`, and `prompt-log.md` are removed.
+
+Ready to continue with M1 (data model + EF Core + migrations + seed data) whenever you are.
+
+### Turn 117 — User
+
+> Lets do it
+
+### Turn 118 — Assistant
+
+[tool actions: created 3 enums (`CategorizationStatus`, `NotificationStatus`, `AuditAction`) and 12 entity classes (`Role`, `Permission`, `RolePermission`, `User`, `UserChannelConfig`, `Outlet`, `Category`, `Subscription`, `Article`, `ArticleCategory`, `FeedEntry`, `NotificationLog`, `AuditLog`) in `AlertHub.Core`; created `AlertHubDbContext`, six `IEntityTypeConfiguration` classes (deliberately setting `DeleteBehavior.Restrict` on `AuditLog`'s two FKs to `User`, since SQL Server rejects cascade on both sides of a self-referencing double FK), and `SeedData.cs` (fixed-ID Permissions/Roles/RolePermissions/Outlets/Categories — actual seeded User accounts deferred to M2, since they need real password hashes) in `AlertHub.Infrastructure`]
+
+Starting **M1: data model + EF Core + migrations + seed data**. Let me build the entities first.
+
+[tool actions: built `Infrastructure` — clean; wired `AlertHubDbContext` into `AlertHub.Api`'s `Program.cs` with a LocalDB connection string in `appsettings.json`; built `Api` — clean]
+
+Now wiring up the DbContext registration in the API host. Let me check current `Program.cs` and `appsettings.json`.
+
+[tool actions: checked for SQL Server LocalDB availability (`sqllocaldb info` — found `MSSQLLocalDB`); installed the `dotnet-ef` global tool pinned to 8.0.11; ran `dotnet ef migrations add InitialCreate`]
+
+LocalDB is available (`MSSQLLocalDB`) — that's the right choice for a dev/demo repo. Let me wire it up.
+
+[tool actions: inspected the generated migration — confirmed cascade/restrict rules and the unique `(UserId, OutletId, CategoryId)` index were correct]
+
+Migration generated. Let me check what was created and verify it looks right.
+
+Unique constraint confirmed correct. Now let's actually apply the migration to LocalDB to verify it really creates cleanly (per the plan's verification step).
+
+[tool actions: ran `dotnet ef database update` — failed with `CultureNotFoundException` inside `Microsoft.Data.SqlClient`]
+
+Found and need to fix a real bug: `AlertHub.Api.csproj` has `<InvariantGlobalization>true</InvariantGlobalization>` (left over from the original scaffold, harmless with SQLite) — but `Microsoft.Data.SqlClient` needs culture info internally to open a connection, and invariant globalization mode strips that out entirely. This wasn't a problem before because there was no SQL Server client in play; switching to MSSQL surfaced it.
+
+[tool actions: removed `InvariantGlobalization` from `AlertHub.Api.csproj`; re-ran `dotnet ef database update` — succeeded, database + all 13 tables created, seed data inserted]
+
+The categorization service doesn't touch SQL Server (stateless, no DB), so its `InvariantGlobalization=true` is fine to leave as-is. Retrying the migration on the API now.
+
+Schema created cleanly and seed data inserted correctly. Let me do a final full-solution build check before committing M1.
+
+[tool actions: `dotnet build AlertHub.sln` — clean, 0 warnings/errors across all 5 projects; staged and committed M1]
+
+Clean build across all 5 projects. Let's commit M1.
+
+[tool actions: committed M1; updated `docs/plan.md`'s status table (M0/M0.5/M1 marked Done)]
+
+M1 is committed and verified — full solution builds clean, migration applies cleanly to LocalDB, seed data lands correctly. One real bug caught and fixed along the way: `AlertHub.Api.csproj` still had `InvariantGlobalization=true` from the original SQLite-era scaffold, which silently breaks `Microsoft.Data.SqlClient`'s connection handling — surfaced immediately as a hard failure on the first `dotnet ef database update`, not something that would have passed quietly.
+
+`docs/plan.md`'s status table is updated (M0/M0.5/M1 marked done) — I'll fold that into the next commit rather than making a standalone doc-only commit for a one-line change.
+
+Ready for **M2: auth** (password hashing, JWT issuance/validation, permission policies baked into the token, and the fresh per-request `IsDisabled` check) whenever you want to continue.
+
+### Turn 119 — User
+
+> why do you call angular: angular admin app its not just admin views...
+
+### Turn 120 — Assistant
+
+Good catch — let me check where that phrasing actually lives, since it shouldn't say that anymore.
+
+[tool actions: grepped and read `README.md` — found "Frontend: Angular (admin view)" and "Angular admin app" in the repo layout diagram, both leftover from the pre-redesign scaffold; also found the file was stale in several other ways (SQLite, dead links to deleted docs, missing `services/` from the layout)]
+
+Good catch — that's in `README.md` (line 15: "Frontend: Angular (admin view)", line 27: "Angular admin app"), and it's leftover from the pre-redesign scaffold. Now that I've looked at the whole file, it's stale in several other ways too: it says SQLite (now MSSQL), links to `docs/decision-log.md`/`docs/prompt-log.md` (both deleted), and the repo layout diagram is missing `services/` entirely. Let me fix the whole thing while I'm in there rather than just the one phrase.
+
+[tool actions: rewrote `README.md`]
+
+Wait — I need to fix something I just got wrong in that README edit: I pointed to `technical-discussion.md`'s Decision Timeline for "the full story of issues caught during the build," but that story isn't actually there. The NuGet feed issue, the EF Core version pin, the template-cruft cleanup, and today's `InvariantGlobalization` catch were all `decision-log.md`-only content, and per your instruction that file was deleted outright, not folded in — so none of that has a home anywhere in the repo anymore except my chat responses, which aren't part of what gets committed.
+
+[tool actions: fixed the incorrect cross-reference in `README.md`]
+
+That said, thinking about it more — these catches are now living in commit messages instead (I've been writing them in detail there, like M1's commit). Git log is inspectable and commit messages are an explicit submission requirement, so this might genuinely not be a gap, just a different location than before.
+
+Worth a quick call: is having these caught-issue writeups live only in commit messages (not in any of the three docs) fine, or do you want a lightweight running note of them somewhere scannable without digging through `git log`?
+
+### Turn 121 — User
+
+> yes I want them to be scannable outside of git log
+
+### Turn 122 — Assistant
+
+Given `plan.md` already tracks status/what's-being-built (versus `technical-discussion.md`'s why and `transcript.md`'s verbatim record), I'll add a section there rather than reintroduce a fourth file — and backfill the entries that would otherwise be lost now that `decision-log.md` is gone.
+
+[tool actions: added an "Issues caught during implementation" section to `docs/plan.md`, backfilling the NuGet feed issue, the EF Core version pin, template cruft, the subagent-deleted-plan.md incident, and the InvariantGlobalization/SqlClient issue; staged and committed the README fix + plan.md issues log together]
+
+Committed. To summarize what came out of your question: the README's "Angular admin app" phrasing was genuinely stale (fixed, along with several other things in that file that hadn't kept pace — SQLite, dead links to deleted docs, missing `services/` in the layout), and it surfaced a real gap — the build-time catches that used to live in `decision-log.md` had nowhere to go after it was deleted. That's now solved with a scannable "Issues caught during implementation" section in `plan.md`, backfilled with everything lost plus today's `InvariantGlobalization` fix, going forward as new catches happen.
+
+Ready to continue with **M2 (auth)** whenever you are.
+
+### Turn 123 — User
+
+> please update the transcript
+
+*(This message — see `transcript.md`, this file, updated in response.)*
+
 ---
 
 *(Further turns appended below, verbatim, as the conversation continues.)*

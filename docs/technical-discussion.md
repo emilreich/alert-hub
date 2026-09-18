@@ -442,6 +442,87 @@ legitimately droppable under time pressure), mirroring the original
 `plan.md`'s "what could get cut" section, rather than treating everything
 discussed here as equally must-build.
 
+### 2026-09-18 — Moving to implementation, and consolidating documentation
+
+With the technical design settled, the candidate switched into plan mode
+to turn it into a concrete build plan. An Explore subagent surveyed the
+existing repo first and confirmed there was nothing to preserve — all four
+.NET projects were still empty template scaffolding, the Angular client
+was the untouched `ng new` output. A Plan subagent then read this file in
+full and drafted a concrete plan: an updated 5-project solution layout
+(adding a genuinely separate `AlertHub.CategorizationService`), a 12-step
+build order (M0–M11) with each step landing as its own commit per the
+candidate's explicit requirement, a prioritized load-bearing/droppable/
+out-of-scope breakdown addressing the time-budget risk named at the end of
+the design discussion, and a testing approach. It also surfaced two
+genuine open questions rather than silently resolving them:
+
+1. **Should the categorization microservice share any code with Core?**
+   Resolved: fully independent, no project reference, own DTOs — the most
+   faithful reading of "physically separate, language-agnostic."
+   Consequence, made explicit rather than left implicit: categories cross
+   the service boundary as plain strings, kept in sync by hand between the
+   microservice's lookup table and the main API's seed data, with no
+   compiler check — an accepted tradeoff of true independence, not an
+   oversight.
+2. **Should SignalR group membership key off the role claim or permission
+   claims?** The original design (decision 34) predated the permission
+   redesign. Resolved: permission claims, for consistency with "JWT
+   permissions are the authorization source of truth" everywhere else.
+
+The plan was approved, and implementation began (M0, then M1 — see
+`plan.md`'s milestone table for status and `plan.md`'s "Issues caught
+during implementation" section for the concrete bugs found along the way,
+including a subagent incidentally deleting `docs/plan.md` during
+exploration, caught via routine `git status` review and restored from git
+history before anything was committed).
+
+**A significant process decision, separate from the architecture itself:**
+partway through implementation, the candidate asked whether
+`decision-log.md` and `architecture.md` were still accurate. The honest
+answer was mixed — `architecture.md` was almost entirely superseded (it
+described the old data model end to end), while `decision-log.md` was a
+genuine blend of still-accurate process entries (NuGet feed, EF Core
+version pin, template cruft) and architecture-specific entries that were
+now stale or flatly contradicted (the old four-project layout, SQLite,
+"no end-user portal"). Asked directly "what would you do," the
+recommendation was targeted per-entry notes on `decision-log.md` rather
+than a blanket banner, since blanket-superseding would incorrectly cast
+doubt on the still-valid entries too.
+
+The candidate went further than that recommendation: **consolidate the
+repo's documentation down to exactly three living files** —
+`plan.md`, `technical-discussion.md` (this file), and `transcript.md` —
+deleting `architecture.md`, `decision-log.md`, and `prompt-log.md`
+entirely rather than archiving or merging them. Before executing this,
+two concerns were raised explicitly rather than silently complying: that
+`decision-log.md`'s still-valid process entries would be lost with no
+successor location, and — more materially — that `prompt-log.md` was the
+**only** record of the earlier (pre-this-conversation) session's actual
+prompts, which the exercise's own instructions require submitting. Given
+that context, the candidate confirmed deleting all three anyway,
+including `prompt-log.md`, as a deliberate choice. `plan.md` was rewritten
+from scratch as the living implementation plan (context, resolved
+ambiguities, solution layout, milestone status table, priority/cut list,
+testing approach, verification checkpoints) rather than left with its
+pre-redesign content.
+
+This resurfaced practically almost immediately: fixing a stale reference
+in `README.md` (it still called the Angular app "admin view" only, among
+other staleness) led to writing a cross-reference to `technical-discussion.md`
+for "the full story of issues caught during the build" — which turned out
+to be wrong, since that story only ever lived in the now-deleted
+`decision-log.md`. Caught and corrected before it shipped, and it raised
+a real question: with `decision-log.md` gone, where do future build-time
+catches go, if not scattered only through git log? The candidate wanted
+them scannable outside of git log specifically, so `plan.md` (already the
+living status/what's-being-built document) gained an "Issues caught during
+implementation" section, backfilled with everything that would otherwise
+have been lost (the NuGet feed issue, the EF Core version pin, template
+cruft, the subagent plan.md deletion, and the `InvariantGlobalization`/
+`SqlClient` bug found during M1) plus a place for new entries going
+forward.
+
 ---
 
 ## Decision Timeline
@@ -622,6 +703,27 @@ corresponds to a point in the "Architecture discussion" section above.
     cuttable under time pressure) — the technical design is internally
     coherent, but the total scope has grown past the brief's minimal
     reading and that risk should be named, not assumed away.
+47. Categorization microservice confirmed fully independent — no shared
+    code/project reference with `Core`; categories cross the service
+    boundary as plain strings, manually kept in sync, as an accepted
+    tradeoff of true independence.
+48. SignalR group membership resolved to key off permission claims, not
+    the role claim, for consistency with the post-permission-redesign
+    authorization model.
+49. Implementation plan approved: 12 milestones (M0–M11), each its own
+    commit, with an explicit load-bearing/droppable/out-of-scope priority
+    list addressing the time-budget risk.
+50. Documentation consolidated to exactly three living docs — `plan.md`,
+    `technical-discussion.md`, `transcript.md`. `architecture.md`,
+    `decision-log.md`, and `prompt-log.md` deleted entirely (not
+    archived), including `prompt-log.md` despite it being the only record
+    of the earlier session's prompts — a deliberate choice, made after
+    that tradeoff was explicitly named rather than silently absorbed.
+51. `plan.md` gained a scannable "Issues caught during implementation"
+    section (backfilling what `decision-log.md` used to hold), after a
+    stale `README.md` reference revealed that build-time catches had no
+    home once `decision-log.md` was deleted — git log alone wasn't
+    considered scannable enough.
 
 *(Further entries appended here, matching new headings/entries added above,
 as the technical-side discussion proceeds.)*

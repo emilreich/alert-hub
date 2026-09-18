@@ -72,8 +72,8 @@ References: `Infrastructure → Core`; `Api → Core, Infrastructure`;
 | # | Milestone | Status |
 |---|---|---|
 | M0 | Solution restructuring: MSSQL swap, new microservice project + sln entry | **Done** |
-| M0.5 | Docs reconciliation — consolidate to plan/technical-discussion/transcript | **In progress** |
-| M1 | Data model + EF Core + migrations + deterministic seed data | Not started |
+| M0.5 | Docs reconciliation — consolidate to plan/technical-discussion/transcript | **Done** |
+| M1 | Data model + EF Core + migrations + deterministic seed data | **Done** |
 | M2 | Auth: hashing, JWT issuance/validation, permission policies, fresh per-request `IsDisabled` check | Not started |
 | M3 | Self-service CRUD: catalog, subscriptions, channel config | Not started |
 | M4 | Admin CRUD: list/detail/edit-on-behalf/disable, audit writes | Not started |
@@ -117,6 +117,44 @@ backfill.
 - **Unit** (`AlertHub.Tests/Unit/`): `MatchingEngineTests.cs` (pure logic, no infra), `KeywordCategorizerTests.cs` (via a test-only reference to the categorization service).
 - **Integration** (`AlertHub.Tests/Integration/`): `CategorizationFlowTests.cs` — ingest → categorize-callback → match → `FeedEntry`/`NotificationLog`, using a `FakeCategorizationDispatcher` and EF Core's InMemory provider.
 - **Not tested given the time budget:** SignalR hub behavior (manual verification), Angular component tests beyond the default scaffold smoke test, MSSQL-specific migration behavior (verified once manually).
+
+## Issues caught during implementation
+
+Terse, running log of concrete bugs/mistakes caught and fixed while
+executing this plan — implementation-time process evidence, distinct from
+`technical-discussion.md`'s architecture decisions. Full detail for each
+also lives in the relevant commit message; this is the scannable index.
+
+1. **Unrelated authenticated NuGet feed breaking restore.** A machine-wide
+   `%APPDATA%\NuGet\NuGet.Config` (leftover from an unrelated
+   employer/project) was being consulted on `dotnet new`, causing 401s.
+   Fixed with a repo-local `NuGet.Config` (`<clear/>` + nuget.org only) so
+   restore is reproducible regardless of any given machine's global config.
+2. **`dotnet add package` silently resolved an incompatible EF Core
+   version.** Adding the SQLite EF Core package with no version pin
+   grabbed 10.0.12 (net10.0-only) against net8.0 projects — caught by an
+   explicit `NU1202` restore error, not a silent failure. Fixed by pinning
+   EF Core packages to `8.0.11` throughout.
+3. **Template scaffolding cruft in the initial commit.** `dotnet new
+   webapi`/`classlib` and `ng new` leave behind boilerplate
+   (`WeatherForecastController`, empty `Class1.cs` stubs, a full marketing
+   landing page in `app.html`) with no place in the repo's history.
+   Removed, then rebuilt/retested to confirm nothing depended on them.
+4. **A subagent deleted `docs/plan.md` during plan-mode exploration.**
+   Explore/Plan subagents have Bash access even without Edit/Write; at some
+   point during repo survey/plan-drafting, `docs/plan.md` was deleted —
+   not requested by any instruction given. Caught via routine `git status`
+   review before committing M0, restored with `git checkout -- docs/plan.md`
+   before anything was staged. A reminder that subagent side effects need
+   the same scrutiny as their reported output.
+5. **`InvariantGlobalization=true` broke the MSSQL connection.** Left over
+   in `AlertHub.Api.csproj` from the original SQLite-based scaffold
+   (harmless there). `Microsoft.Data.SqlClient` needs culture info
+   internally to open a connection, so it fails outright under invariant
+   globalization mode — surfaced immediately as a hard `CultureNotFoundException`
+   on the first `dotnet ef database update`, not a silent issue. Removed
+   the flag from `AlertHub.Api.csproj` (left in place on the categorization
+   microservice, which has no DB dependency and never hits this path).
 
 ## Verification checkpoints
 
